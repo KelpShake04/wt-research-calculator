@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>War Thunder Research Calculator</title>
+<style>
+  /* Standalone page only; build_embed.py does not copy this block. */
+  body { margin: 0; background: #f6f6f4; }
+  @media (prefers-color-scheme: dark) { body { background: #161615; } }
+</style>
+<style id="wtcalc-style">
+  /* Everything is scoped to #wtcalc so it can be embedded in a blog post. */
+  #wtcalc {
+    --bg: #f6f6f4; --panel: #ffffff; --text: #1d1d1b; --muted: #6b6b66; --line: #d9d9d4;
+    --done: #2f8f5b; --done-bg: #e3f3ea; --path: #c77d0a; --path-bg: #fdf1dc; --target: #b8321f;
+    --premium-bg: #efe9f7; --unlock: #2463b8; --unlock-bg: #e1ecfb;
+    max-width: 1200px; margin: 0 auto; padding: 16px; background: var(--bg); color: var(--text);
+    font: 14px/1.4 system-ui, sans-serif; text-align: left;
+  }
+  @media (prefers-color-scheme: dark) {
+    #wtcalc {
+      --bg: #161615; --panel: #212120; --text: #ecece8; --muted: #9a9a94; --line: #3a3a37;
+      --done: #5cc48a; --done-bg: #1f3a2b; --path: #f0a93a; --path-bg: #3d2e14; --target: #ff6b52;
+      --premium-bg: #2c2638; --unlock: #6aa5f5; --unlock-bg: #1a2b44;
+    }
+  }
+  #wtcalc * { box-sizing: border-box; }
+  #wtcalc [hidden] { display: none !important; }
+  /* Undo common blog-theme styling on the elements we use. */
+  #wtcalc img { padding: 0; margin: 0; border: 0; box-shadow: none; background: none; max-width: none; }
+  #wtcalc button, #wtcalc select, #wtcalc input { margin: 0; width: auto; height: auto; min-height: 0; box-shadow: none; text-transform: none; letter-spacing: normal; line-height: normal; }
+  #wtcalc h1 { font: 600 20px/1.3 system-ui, sans-serif; color: var(--text); text-transform: none; letter-spacing: normal; margin: 0 0 12px; padding: 0; border: 0; }
+  #wtcalc .controls, #wtcalc .summary { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; margin: 0 0 12px; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
+  #wtcalc label { display: flex; gap: 6px; align-items: center; }
+  #wtcalc select, #wtcalc input, #wtcalc button { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; }
+  #wtcalc button { cursor: pointer; }
+  #wtcalc button[aria-pressed="true"] { border-color: var(--text); font-weight: 600; }
+  #wtcalc input[type=number] { width: 90px; }
+  /* Sticky summary only where there is room; on phones it would cover the tree. */
+  @media (min-width: 700px) { #wtcalc .summary { position: sticky; top: 0; z-index: 2; } }
+  #wtcalc .summary b { font-size: 16px; }
+  #wtcalc .hint { color: var(--muted); font-size: 12px; width: 100%; }
+  #wtcalc details.hint summary { cursor: pointer; }
+  #wtcalc .tree { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+  #wtcalc .grid { display: grid; gap: 6px; min-width: max-content; position: relative; }
+  #wtcalc .arrows { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 0; }
+  #wtcalc .arrows g { stroke: var(--muted); fill: var(--muted); }
+  #wtcalc .arrows g.done { stroke: var(--done); fill: var(--done); }
+  #wtcalc .arrows g.path { stroke: var(--path); fill: var(--path); }
+  #wtcalc .arrows path { fill: none; stroke-width: 2; }
+  #wtcalc .arrows polygon { stroke: none; }
+  #wtcalc .rank { color: var(--muted); font-weight: 600; align-self: center; text-align: center; }
+  #wtcalc .rank small { display: block; font-weight: 400; font-size: 11px; }
+  #wtcalc .rank small.ok { color: var(--done); }
+  #wtcalc .cell { display: flex; flex-direction: column; gap: 14px; border-top: 1px dashed var(--line); padding: 10px 0 4px; position: relative; z-index: 1; align-items: center; }
+  #wtcalc .folder { border: 1px solid var(--line); border-radius: 6px; padding: 3px; display: flex; flex-direction: column; gap: 12px; }
+  #wtcalc .folder .fold { align-self: stretch; padding: 0 6px; font-size: 12px; color: var(--muted); background: none; border: none; text-align: left; }
+  #wtcalc .card.folderCard { box-shadow: 4px 4px 0 -1px var(--panel), 4px 4px 0 0 var(--line); }
+  #wtcalc .card { width: 176px; min-height: 56px; display: flex; align-items: center; gap: 6px; text-align: left; padding: 3px 6px 3px 3px; border-radius: 6px; background: var(--bg); line-height: 1.25; word-break: keep-all; }
+  #wtcalc .card img { width: 60px; height: 50px; object-fit: contain; flex: none; }
+  #wtcalc .card span { min-width: 0; flex: 1; }
+  #wtcalc .card small { display: block; color: var(--muted); }
+  #wtcalc .card.done { background: var(--done-bg); border-color: var(--done); }
+  #wtcalc .card.path { background: var(--path-bg); border-color: var(--path); }
+  #wtcalc .card.target { outline: 2px solid var(--target); outline-offset: 1px; }
+  #wtcalc .card .bar { display: block; height: 3px; margin-top: 2px; background: var(--path); border-radius: 2px; }
+  #wtcalc .card.done.notbought { border-style: dashed; background: transparent; }
+  #wtcalc .card.unlock { background: var(--unlock-bg); border-color: var(--unlock); }
+  #wtcalc .card.premium.done { background: var(--done-bg); border-color: var(--done); opacity: 1; }
+  #wtcalc .card.premium { background: var(--premium-bg); opacity: .75; }
+  #wtcalc footer { color: var(--muted); font-size: 12px; margin-top: 12px; }
+  #wtcalc footer a { color: inherit; }
+  /* Phones: narrower cards so more columns fit. Keep last so it overrides .card above. */
+  @media (max-width: 600px) {
+    #wtcalc .card { width: 146px; min-height: 48px; gap: 4px; }
+    #wtcalc .card img { width: 44px; height: 38px; }
+  }
+</style>
+
+</head>
+<body>
+<main id="wtcalc">
+  <h1 data-t="title"></h1>
+  <div class="controls">
+    <label><span data-t="country"></span> <select id="wt-country"></select></label>
+    <label><span data-t="branch"></span> <select id="wt-branch"></select></label>
+    <span>
+      <button id="wt-modeResearch" data-t="modeResearch"></button>
+      <button id="wt-modeTarget" data-t="modeTarget"></button>
+      <button id="wt-modeBuy" data-t="modeBuy"></button>
+      <button id="wt-modeProgress" data-t="modeProgress"></button>
+    </span>
+    <label id="wt-progressEditor" hidden><span id="wt-progressName"></span> <input id="wt-progress" type="number" min="0" step="100"> <span id="wt-progressMax"></span></label>
+    <label><span data-t="avg"></span> <input id="wt-avg" type="number" min="1" step="100"></label>
+    <label><span data-t="discount"></span> <select id="wt-discount">
+      <option value="0" data-t="noDiscount"></option><option value="30">-30%</option><option value="50">-50%</option>
+    </select></label>
+    <button id="wt-folders"></button>
+    <button id="wt-reset" data-t="reset"></button>
+    <button id="wt-lang"></button>
+    <details class="hint"><summary data-t="howto"></summary><span data-t="hint"></span></details>
+  </div>
+  <div class="summary" id="wt-summary"></div>
+  <div class="tree"><div class="grid" id="wt-grid"></div></div>
+  <footer>
+    <span data-t="note"></span><br>
+    <span data-t="source"></span> <a href="https://github.com/gszabi99/War-Thunder-Datamine">War-Thunder-Datamine</a> · <span id="wt-updated"></span>
+  </footer>
+</main>
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
