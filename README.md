@@ -14,8 +14,31 @@ Open `index.html` in a browser (keep `app.js` and `data.js` next to it). Nothing
 - `app.js`: calculator logic
 - `data.js`: vehicle data, built by `build_data.py`
 - `build_data.py`: rebuilds `data.js` from the community datamine (`python3 build_data.py`)
-- `build_embed.py`: writes a snippet for embedding the calculator in a blog post
+- `embed.js`: generated from `index.html` by `build_embed.py`; puts the calculator into a blog post
+- `build_embed.py`: rebuilds `embed.js` (`python3 build_embed.py`)
 - `test_calc.py`: regression test in headless Chrome (`python3 test_calc.py`)
+
+## Embed in a blog post
+
+Paste into the post's HTML view:
+
+```html
+<div id="wtcalc"></div>
+<script src="https://cdn.jsdelivr.net/gh/KelpShake04/wt-research-calculator@1/embed.js"></script>
+```
+
+`@1` follows the newest `v1.x.y` tag, so the post never needs editing after a release.
+
+## Release
+
+```sh
+python3 build_embed.py        # after any change to index.html
+python3 test_calc.py
+git commit -am "..." && git push
+git tag v1.x.y && git push origin v1.x.y
+# optional, skips jsDelivr's cache (up to 12 hours):
+for f in embed.js app.js data.js; do curl -s https://purge.jsdelivr.net/gh/KelpShake04/wt-research-calculator@1/$f; done
+```
 
 ## Data
 

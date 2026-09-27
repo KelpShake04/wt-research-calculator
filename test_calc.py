@@ -1,8 +1,8 @@
 """Regression test for the research calculator.
 
 Run: python3 test_calc.py
-Opens the calculator in headless Chrome (network blocked) twice: as index.html, and embedded the way
-build_embed.py embeds it in a Blogger post, inside a deliberately hostile fake blog theme. Both runs
+Opens the calculator in headless Chrome (network blocked) twice: as index.html, and through embed.js
+the way a Blogger post loads it, inside a deliberately hostile fake blog theme. Both runs
 execute JS_CHECKS and compare the calculator's numbers with the reference implementation below.
 Set CHROME=/path/to/chrome to override the browser.
 """
@@ -95,9 +95,10 @@ def check_data():
 
 JS_CHECKS = r"""
 <script>
-// Not destructured as $: a host page may already own that global (the fake blog theme does).
-const { S, U, D, click, plan, render, treeIds, left, price } = window.WTCALC, wt$ = window.WTCALC.$;
 const R = { errors: [], sweeps: {}, scenarios: {}, checks: {} };
+// Filled from window.WTCALC once the app has loaded (embed.js loads it asynchronously).
+// Not named $: a host page may already own that global (the fake blog theme does).
+let S, U, D, click, plan, render, treeIds, left, price, wt$;
 const reset = () => { S.done = new Set(); S.bought = new Set(); S.progress = {}; S.target = null; S.discount = 0; S.open = new Set(); S.mode = "research"; };
 const snap = () => {
   const P = plan(), sum = (l) => l.reduce((s, id) => s + left(id), 0);
@@ -125,6 +126,9 @@ function sweep(label) {
   }
   R.sweeps[label] = { cards, arrows, expected, kinks };
 }
+function runChecks() {
+  ({ S, U, D, click, plan, render, treeIds, left, price } = window.WTCALC);
+  wt$ = window.WTCALC.$;
 try {
   reset(); sweep("collapsed");
   S.open = new Set(Object.keys(D.groups)); sweep("expanded");
@@ -160,12 +164,14 @@ try {
   R.checks.folderCloses = !S.open.has("us_sherman_group");
   R.checks.editorHiddenOutsideProgress = getComputedStyle(wt$("progressEditor")).display === "none";
 } catch (e) { R.errors.push("scenario: " + e); }
+}
 </script>
 """
 
 # Extra checks for the embedded copy: the host page's globals, lang and styles must not leak either way.
 BLOG_CHECKS = r"""
 <script>
+function blogChecks() {
 try {
   R.checks.themeDollarIntact = window.__themeDollar === true && window.$() === "theme-jquery";
   R.checks.themeIdIntact = document.getElementById("summary").textContent === "theme summary";
@@ -177,12 +183,18 @@ try {
   R.checks.headingStyleIntact = getComputedStyle(document.querySelector("#wtcalc h1")).textTransform === "none";
   R.checks.summaryVisible = getComputedStyle(document.querySelector("#wtcalc .summary")).display === "flex";
 } catch (e) { R.errors.push("blog: " + e); }
+}
 </script>
 """
 
 JS_REPORT = r"""
 <script>
-document.body.insertAdjacentHTML("beforeend", "<pre id=testout>" + JSON.stringify(R).replace(/</g, "\\u003c") + "</pre>");
+(function wait(n) {
+  if (!window.WTCALC && n < 200) return setTimeout(() => wait(n + 1), 50);
+  if (!window.WTCALC) R.errors.push("app did not load");
+  else { runChecks(); if (typeof blogChecks === "function") blogChecks(); }
+  document.body.insertAdjacentHTML("beforeend", "<pre id=testout>" + JSON.stringify(R).replace(/</g, "\\u003c") + "</pre>");
+})(0);
 </script>
 """
 
@@ -209,7 +221,7 @@ HOSTILE_BLOG = """<!doctype html>
 def run_browser(page):
     tmp = tempfile.mkdtemp(prefix="wtcalc-test-")
     try:
-        for name in ("data.js", "app.js"):
+        for name in ("data.js", "app.js", "embed.js"):
             shutil.copy(os.path.join(HERE, name), tmp)
         with open(os.path.join(tmp, "index.html"), "w", encoding="utf-8") as f:
             f.write(page)
@@ -246,8 +258,8 @@ def pages():
     with open(os.path.join(HERE, "index.html"), encoding="utf-8") as f:
         index = f.read().replace("</body>", JS_CHECKS + JS_REPORT + "</body>")
     sys.path.insert(0, HERE)
-    from build_embed import snippet
-    blog = HOSTILE_BLOG.replace("SNIPPET", snippet(".")).replace("</body>", JS_CHECKS + BLOG_CHECKS + JS_REPORT + "</body>")
+    from build_embed import post_snippet
+    blog = HOSTILE_BLOG.replace("SNIPPET", post_snippet(".")).replace("</body>", JS_CHECKS + BLOG_CHECKS + JS_REPORT + "</body>")
     return {"index.html": index, "blogger embed": blog}
 
 
@@ -273,6 +285,11 @@ def check_browser(label, R, expected):
 
 def main():
     failures = [f"data: {p}" for p in check_data()]
+    sys.path.insert(0, HERE)
+    from build_embed import embed_js
+    with open(os.path.join(HERE, "embed.js"), encoding="utf-8") as f:
+        if f.read() != embed_js():
+            failures.append("embed.js is stale: run python3 build_embed.py")
     m24 = set(chain("us_m24_chaffee"))
     unb = m24 | set(chain("us_m18_hellcat")) | set(chain("us_m3a1_stuart"))
     expected = {
